@@ -2,7 +2,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
-    case png, jpeg, heic, tiff, gif, bmp, webp
+    case png, jpeg, webp, avif, heic, tiff, gif, bmp
 
     public var id: Self { self }
 
@@ -10,11 +10,12 @@ public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .png: .png
         case .jpeg: .jpeg
+        case .webp: .webP
+        case .avif: UTType("public.avif") ?? UTType(importedAs: "public.avif")
         case .heic: .heic
         case .tiff: .tiff
         case .gif: .gif
         case .bmp: .bmp
-        case .webp: .webP
         }
     }
 
@@ -22,11 +23,12 @@ public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .png: "PNG"
         case .jpeg: "JPEG"
+        case .webp: "WebP"
+        case .avif: "AVIF"
         case .heic: "HEIC"
         case .tiff: "TIFF"
         case .gif: "GIF"
         case .bmp: "BMP"
-        case .webp: "WebP"
         }
     }
 
@@ -34,12 +36,17 @@ public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
 
     public var supportsAlpha: Bool { ![.jpeg, .bmp].contains(self) }
 
-    public var supportsQuality: Bool { [.jpeg, .heic, .webp].contains(self) }
+    public var supportsQuality: Bool { [.jpeg, .webp, .avif, .heic].contains(self) }
 
-    /// Formats ImageIO can encode on this machine (WebP encoding depends on the OS version).
+    /// Options only the libwebp encoder exposes.
+    public var supportsLossless: Bool { self == .webp }
+    public var supportsEffort: Bool { self == .webp }
+
+    /// WebP is always available (bundled libwebp); everything else is encoded by ImageIO,
+    /// whose encoders vary by OS version (AVIF needs a recent macOS).
     public static var writable: [ImageFormat] {
         let identifiers = Set(CGImageDestinationCopyTypeIdentifiers() as? [String] ?? [])
-        return allCases.filter { identifiers.contains($0.utType.identifier) }
+        return allCases.filter { $0 == .webp || identifiers.contains($0.utType.identifier) }
     }
 
     public init?(fileExtension: String) {
@@ -47,5 +54,20 @@ public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
               let match = Self.allCases.first(where: { type.conforms(to: $0.utType) })
         else { return nil }
         self = match
+    }
+}
+
+public struct EncodeOptions: Sendable, Hashable {
+    /// 0...1, used by lossy formats.
+    public var quality: Double
+    /// WebP only.
+    public var lossless: Bool
+    /// WebP only: 0 (fastest) ... 6 (smallest), libwebp's `method`.
+    public var effort: Int
+
+    public init(quality: Double = 0.8, lossless: Bool = false, effort: Int = 4) {
+        self.quality = quality
+        self.lossless = lossless
+        self.effort = effort
     }
 }

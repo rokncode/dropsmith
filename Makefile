@@ -7,7 +7,7 @@ ifeq ($(shell xcode-select -p),/Library/Developer/CommandLineTools)
   endif
 endif
 
-.PHONY: build run test app clean
+.PHONY: build run test app install clean
 
 build:
 	swift build
@@ -21,6 +21,11 @@ test:
 
 app:
 	scripts/bundle.sh
+
+# Copies the app to /Applications so Spotlight/Launchpad can find it (needed to reopen it
+# when the menu bar icon and drop zone are both hidden).
+install: app
+	ditto build/DesktopEdit.app /Applications/DesktopEdit.app
 
 clean:
 	rm -rf .build build

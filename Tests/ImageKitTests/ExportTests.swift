@@ -6,7 +6,7 @@ import Testing
 
 @Suite struct ExportTests {
     @Test func coreFormatsAreWritable() {
-        #expect(Set([.png, .jpeg, .heic, .tiff]).isSubset(of: ImageFormat.writable))
+        #expect(Set([.png, .jpeg, .webp, .heic, .tiff]).isSubset(of: ImageFormat.writable))
     }
 
     @Test(arguments: ImageFormat.writable)

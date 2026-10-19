@@ -34,6 +34,9 @@ struct InspectorView: View {
             ResizeSection(session: session)
                 .disabled(session.isCropping)
 
+            CompressionSection(session: session)
+                .disabled(session.isCropping)
+
             ExportSection(session: session)
                 .disabled(session.isCropping)
         }
@@ -146,29 +149,87 @@ private struct ResizeSection: View {
     }
 }
 
-private struct ExportSection: View {
+private struct CompressionSection: View {
     @Bindable var session: EditSession
 
     var body: some View {
-        Section("Export") {
+        Section("Format & Compression") {
             Picker("Format", selection: $session.exportFormat) {
                 ForEach(ImageFormat.writable) { Text($0.displayName).tag($0) }
             }
-            if session.exportFormat.supportsQuality {
+            if session.exportFormat.supportsLossless {
+                Toggle("Lossless", isOn: $session.encodeOptions.lossless)
+            }
+            if usesQuality {
                 LabeledContent("Quality") {
                     HStack {
-                        Slider(value: $session.exportQuality, in: 0.1...1)
-                        Text("\(Int(session.exportQuality * 100))%")
+                        Slider(value: $session.encodeOptions.quality, in: 0...1, step: 0.01)
+                        Text("\(Int((session.encodeOptions.quality * 100).rounded()))")
                             .monospacedDigit()
-                            .frame(width: 40, alignment: .trailing)
+                            .frame(width: 28, alignment: .trailing)
                     }
                 }
+            }
+            if session.exportFormat.supportsEffort {
+                LabeledContent("Effort") {
+                    HStack {
+                        Slider(value: effort, in: 0...6, step: 1)
+                        Text("\(session.encodeOptions.effort)")
+                            .monospacedDigit()
+                            .frame(width: 28, alignment: .trailing)
+                    }
+                }
+                .help("Higher effort makes smaller files but encodes slower.")
+            }
+            if usesQuality {
+                LabeledContent("Target size") {
+                    HStack(spacing: 6) {
+                        TextField("KB", value: $session.targetKilobytes, format: .number)
+                            .labelsHidden()
+                            .frame(width: 70)
+                            .onSubmit { Task { await session.fitToTargetSize() } }
+                        Text("KB").foregroundStyle(.secondary)
+                        Button("Fit") { Task { await session.fitToTargetSize() } }
+                            .disabled((session.targetKilobytes ?? 0) <= 0)
+                    }
+                }
+                .help("Finds the highest quality whose file is at most this size.")
             }
             if !session.exportFormat.supportsAlpha && session.hasTransparencyEdit {
                 Label("\(session.exportFormat.displayName) has no transparency, so the background will be white.", systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+            if let comparison = session.comparison {
+                LabeledContent("Compressed size") {
+                    HStack(spacing: 4) {
+                        Text(formatBytes(comparison.bytes)).monospacedDigit()
+                        if let savings = CompareView.savings(session) {
+                            Text(savings.text).foregroundStyle(savings.isSmaller ? .green : .red)
+                        }
+                    }
+                }
+            }
+            Button(session.isComparing ? "Hide Comparison" : "Compare with Original", systemImage: "rectangle.split.2x1") {
+                session.isComparing.toggle()
+            }
+        }
+    }
+
+    private var usesQuality: Bool {
+        session.exportFormat.supportsQuality && !(session.exportFormat.supportsLossless && session.encodeOptions.lossless)
+    }
+
+    private var effort: Binding<Double> {
+        Binding(get: { Double(session.encodeOptions.effort) }, set: { session.encodeOptions.effort = Int($0) })
+    }
+}
+
+private struct ExportSection: View {
+    @Bindable var session: EditSession
+
+    var body: some View {
+        Section("Export") {
             Picker("Save to", selection: $session.destination) {
                 Text("Next to original").tag(ExportDestination.besideOriginal)
                 Text("Choose folder…").tag(ExportDestination.chooseFolder)
@@ -180,7 +241,7 @@ private struct ExportSection: View {
             Button {
                 Task { await session.export() }
             } label: {
-                Label(session.destination == .clipboard ? "Copy" : "Export", systemImage: "square.and.arrow.down")
+                Label(session.destination == .clipboard ? "Copy" : "Export \(session.exportFormat.displayName)", systemImage: "square.and.arrow.down")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)

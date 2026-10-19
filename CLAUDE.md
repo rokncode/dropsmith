@@ -4,10 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product
 
-A native macOS app (Swift, SwiftUI + AppKit, no third-party image libraries) that puts a small **drop zone on the desktop**. Dropping images on it opens an editor window.
+A native macOS app (Swift, SwiftUI + AppKit; the only third-party code is libwebp) that puts a small **drop zone on the desktop**. Dropping images on it opens an editor window.
 
-- **Built:** crop (free + aspect presets), remove background, resize (percent / pixels), convert format, batch-apply edits to every dropped image, export next to the original, to a chosen folder, or to the clipboard
-- **Planned quick actions:** compress to target size, strip metadata, rotate/flip, auto-crop to subject (Vision saliency), trim transparent edges, screenshot beautify (padding/rounded corners/shadow), copy text (OCR), dominant colors, app icon set, grayscale/adjustments
+- **Built:**
+  - crop (free + aspect presets), remove background, resize (percent / pixels)
+  - convert to PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF or BMP
+  - Squoosh-style compression: quality/lossless/effort, live before/after split view with the real encoded size, fit to a target size in KB
+  - batch-apply edits to every dropped image
+  - export next to the original, to a chosen folder, or to the clipboard
+- **Planned quick actions:** strip metadata, rotate/flip, auto-crop to subject (Vision saliency), trim transparent edges, screenshot beautify (padding/rounded corners/shadow), copy text (OCR), dominant colors, app icon set, grayscale/adjustments
 - Exports never overwrite: `OutputNaming` produces `name-edited.ext`, `name-edited-2.ext`, ...
 
 ## Commands
@@ -20,6 +25,7 @@ make run                       # run unbundled (agent policy is set in code, so 
 make test                      # all tests
 make test FILTER=ResizeTests   # one suite or test (passed to `swift test --filter`)
 make app                       # release build → build/DesktopEdit.app (ad-hoc signed, LSUIElement)
+make install                   # make app + copy to /Applications (so Spotlight can relaunch it)
 ```
 
 `Launch at Login` (SMAppService) only appears and works in the bundled `.app`, not under `make run`.
@@ -29,13 +35,19 @@ make app                       # release build → build/DesktopEdit.app (ad-hoc
 - **macOS 27 SDK + CLT can't compile SwiftUI `@State`.** In that SDK `@State` is a macro whose `SwiftUIMacros` plugin ships only with Xcode. The Makefile builds against `MacOSX26.sdk` instead, and only when `xcode-select -p` is the CLT. Bare `swift build` fails with "plugin for module 'SwiftUIMacros' not found".
 - **Swift Testing under CLT** needs the macro plugin path and runtime rpaths. These are set as `unsafeFlags` on the test target in `Package.swift`. Don't remove them. Passing linker flags on the `swift test` command line instead breaks macro resolution.
 - SwiftPM uses the new Swift Build backend (`.build/out/...`). `--build-system native` cannot find `Testing` here.
-- ImageIO on this machine cannot encode WebP. `ImageFormat.writable` filters by `CGImageDestinationCopyTypeIdentifiers()`, so the UI only offers formats that work.
+- ImageIO can't encode WebP, so WebP goes through **libwebp** (`SDWebImage/libwebp-Xcode`, pinned `exact: "1.6.0"`). It is compiled from C source and linked statically, so there's no Homebrew dylib dependency. All other formats use ImageIO, and `ImageFormat.writable` filters them by `CGImageDestinationCopyTypeIdentifiers()` (AVIF encoding needs a recent macOS).
 
 ## Architecture
 
 Two targets: **`ImageKit`** (pure image pipeline, no UI imports, all unit-tested) and **`DesktopEdit`** (the app).
 
 **The "widget" is not WidgetKit.** WidgetKit widgets can't receive drops. `DropZoneController` owns a borderless, non-activating `NSPanel` at `desktopIconWindow + 1` (or `.floating` when "Keep Drop Zone Above Windows" is on), on all Spaces, with its frame autosaved. Menu toggles write `UserDefaults` via `@AppStorage`. The controller watches `UserDefaults.didChangeNotification` and applies them, so the menu and the panel stay decoupled.
+
+**Staying reachable:**
+- The menu bar icon can be hidden (`MenuBarExtra(isInserted:)`, key `menuBarIconVisible`).
+- `AppMenu` is shared by the icon and the drop zone's right-click menu, so settings and Quit always have a home.
+- If both are hidden, `applicationShouldHandleReopen` restores them when the app is launched again. Visibility changes go through `AppDelegate.setMenuBarIconVisible` / `setDropZoneVisible`, which show the how-to-get-back alert.
+- From a shell: `defaults write dev.desktopedit.DesktopEdit menuBarIconVisible -bool true`, then relaunch.
 
 **Drop → editor flow:**
 
@@ -55,11 +67,18 @@ Two targets: **`ImageKit`** (pure image pipeline, no UI imports, all unit-tested
 
 Applying an op renders from the last baked `CGImage`, so undo is a pop and Vision never reruns. Switching images in a batch replays the recipe (`renderSteps`). Batch export re-runs `Pipeline` per source but reuses the baked image for the selected one. Heavy work runs in `@concurrent nonisolated static` helpers.
 
+Compare mode (`CompareView`) shows the current image next to the same image decoded from the actual encoded bytes. `EditorView` runs `.task(id: session.compressionKey)`. The key covers the compare flag, format, options and a `revision` counter that bumps on every `history` change. That task cancels and restarts on each change, and the 250 ms sleep in `refreshComparison` doubles as a slider debounce. The "Original file" size reads the source file with symlinks resolved.
+
 **Rendering/IO:**
 
 - One shared `Renderer.context` (`CIContext`) renders to RGBA8 and falls back to sRGB for non-RGB sources.
 - `ImageLoader` applies EXIF orientation.
-- `ImageExporter` flattens onto white for formats without alpha (JPEG/BMP) and does **not** carry over metadata.
+- `ImageExporter` works in two stages:
+  - `prepare` renders once, flattening onto white for formats without alpha (JPEG/BMP)
+  - `encode(CGImage, format, EncodeOptions)` is called repeatedly for previews and size fitting
+  - metadata is **not** carried over
+- `WebPEncoder` uses libwebp's advanced API (`method` = effort). libwebp needs *straight* RGBA, so it draws premultiplied via CGContext and divides alpha out by hand. Core Image's `unpremultiplyingAlpha()` does **not** work for this: CI re-premultiplies bitmap output. A lossless round-trip test guards it.
+- `Compressor.fit` binary-searches quality for a max byte count and returns nil when even quality 0 is too big. Size ranges differ a lot per encoder (WebP's is narrow on noisy images).
 - `RemoveBackground` uses `VNGenerateForegroundInstanceMaskRequest` + `CIBlendWithMask`, which is why the minimum is macOS 14. Applying it auto-switches a non-alpha export format to PNG.
 
 **Tests** generate images in code (`Tests/ImageKitTests/Helpers.swift`). The background-removal test uses `/Library/User Pictures/Animals/Parrot.heic` and is skipped if that file is missing.

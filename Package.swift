@@ -8,8 +8,12 @@ let cltDeveloper = "/Library/Developer/CommandLineTools"
 let package = Package(
     name: "DesktopEdit",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // ImageIO can read WebP but not write it; libwebp is compiled from source into the app.
+        .package(url: "https://github.com/SDWebImage/libwebp-Xcode.git", exact: "1.6.0"),
+    ],
     targets: [
-        .target(name: "ImageKit"),
+        .target(name: "ImageKit", dependencies: [.product(name: "libwebp", package: "libwebp-Xcode")]),
         .executableTarget(name: "DesktopEdit", dependencies: ["ImageKit"]),
         .testTarget(
             name: "ImageKitTests",

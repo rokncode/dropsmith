@@ -11,7 +11,8 @@ final class DropZoneController {
     private static let size = NSSize(width: 150, height: 150)
 
     var onDrop: (([SourceImage]) -> Void)?
-    var onOpen: (() -> Void)?
+    /// The app menu, shown on right-click (it's the only menu left when the menu bar icon is hidden).
+    var menu: (() -> AnyView)?
 
     private var panel: NSPanel?
     private var defaultsObserver: NSObjectProtocol?
@@ -56,8 +57,7 @@ final class DropZoneController {
         panel.hidesOnDeactivate = false
         panel.contentView = MovableHostingView(rootView: DropZoneView(
             onDrop: { [weak self] sources in self?.onDrop?(sources) },
-            onOpen: { [weak self] in self?.onOpen?() },
-            onHide: { UserDefaults.standard.set(false, forKey: Self.visibleKey) }
+            menu: { [weak self] in self?.menu?() ?? AnyView(EmptyView()) }
         ))
         if !panel.setFrameUsingName(Self.frameName), let screen = NSScreen.main?.visibleFrame {
             panel.setFrameOrigin(NSPoint(x: screen.maxX - Self.size.width - 24, y: screen.minY + 24))

@@ -19,6 +19,7 @@ struct EditorView: View {
         }
         .frame(minWidth: 820, minHeight: 540)
         .task { await session.loadSelected() }
+        .task(id: session.compressionKey) { await session.refreshComparison() }
         .alert(
             "Something went wrong",
             isPresented: Binding(get: { session.errorMessage != nil }, set: { if !$0 { session.errorMessage = nil } }),
@@ -37,7 +38,9 @@ struct CanvasView: View {
     var body: some View {
         ZStack {
             Color(nsColor: .underPageBackgroundColor)
-            if let image = session.current {
+            if session.isComparing, let image = session.current {
+                CompareView(session: session, original: image)
+            } else if let image = session.current {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .interpolation(.high)

@@ -3,8 +3,7 @@ import SwiftUI
 
 struct DropZoneView: View {
     let onDrop: ([SourceImage]) -> Void
-    let onOpen: () -> Void
-    let onHide: () -> Void
+    let menu: () -> AnyView
 
     @State private var isTargeted = false
     @State private var isLoading = false
@@ -44,10 +43,7 @@ struct DropZoneView: View {
             }
             return true
         }
-        .contextMenu {
-            Button("Open Images…", action: onOpen)
-            Button("Hide Drop Zone", action: onHide)
-        }
+        .contextMenu { menu() }
     }
 }
 
