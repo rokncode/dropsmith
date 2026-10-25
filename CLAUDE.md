@@ -39,7 +39,7 @@ The app icon is `Resources/AppIcon.png`, a 1024px master with the standard macOS
 ## Toolchain quirks (Command Line Tools only, no Xcode)
 
 - **macOS 27 SDK + CLT can't compile SwiftUI `@State`.** In that SDK `@State` is a macro whose `SwiftUIMacros` plugin ships only with Xcode. The Makefile builds against `MacOSX26.sdk` instead, and only when `xcode-select -p` is the CLT. Bare `swift build` fails with "plugin for module 'SwiftUIMacros' not found".
-- **Swift Testing under CLT** needs the macro plugin path and runtime rpaths. These are set as `unsafeFlags` on the test target in `Package.swift`. Don't remove them. Passing linker flags on the `swift test` command line instead breaks macro resolution.
+- **Swift Testing under CLT** needs the macro plugin path and runtime rpaths. These are set as `unsafeFlags` on the test target in `Package.swift`, only when the Makefile exports `DROPSMITH_CLT=1` (CLT is the active toolchain). Don't remove them, and don't make them unconditional: Xcode's compiler fails to load the CLT's `libTestingMacros.dylib` (CI has both installed). Passing linker flags on the `swift test` command line instead breaks macro resolution.
 - SwiftPM uses the new Swift Build backend (`.build/out/...`). `--build-system native` cannot find `Testing` here.
 - ImageIO can't encode WebP, so WebP goes through **libwebp** (`SDWebImage/libwebp-Xcode`, pinned `exact: "1.6.0"`). It is compiled from C source and linked statically, so there's no Homebrew dylib dependency. All other formats use ImageIO, and `ImageFormat.writable` filters them by `CGImageDestinationCopyTypeIdentifiers()` (AVIF encoding needs a recent macOS).
 

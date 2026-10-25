@@ -2,8 +2,10 @@
 import PackageDescription
 
 // Command Line Tools (no Xcode) ship Swift Testing but SwiftPM doesn't wire up its macro plugin
-// or runtime search path, so point at them explicitly. Harmless when Xcode is installed.
+// or runtime search path, so point at them explicitly. Only when the CLT is the active toolchain
+// (the Makefile sets DROPSMITH_CLT): Xcode's compiler can't load the CLT's macro plugin.
 let cltDeveloper = "/Library/Developer/CommandLineTools"
+let usingCLT = Context.environment["DROPSMITH_CLT"] == "1"
 
 let package = Package(
     name: "Dropsmith",
@@ -18,15 +20,15 @@ let package = Package(
         .testTarget(
             name: "ImageKitTests",
             dependencies: ["ImageKit"],
-            swiftSettings: [
+            swiftSettings: usingCLT ? [
                 .unsafeFlags(["-plugin-path", "\(cltDeveloper)/usr/lib/swift/host/plugins/testing"]),
-            ],
-            linkerSettings: [
+            ] : [],
+            linkerSettings: usingCLT ? [
                 .unsafeFlags([
                     "-Xlinker", "-rpath", "-Xlinker", "\(cltDeveloper)/Library/Developer/Frameworks",
                     "-Xlinker", "-rpath", "-Xlinker", "\(cltDeveloper)/Library/Developer/usr/lib",
                 ]),
-            ]
+            ] : []
         ),
     ]
 )

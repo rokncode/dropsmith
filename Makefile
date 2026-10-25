@@ -2,6 +2,8 @@
 # plugin (it ships with Xcode), so build against the 26.x SDK instead. With Xcode, use its SDK.
 CLT_SDK := /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk
 ifeq ($(shell xcode-select -p),/Library/Developer/CommandLineTools)
+  # Tells Package.swift to add the CLT's Swift Testing plugin path and rpaths.
+  export DROPSMITH_CLT := 1
   ifneq ($(wildcard $(CLT_SDK)),)
     export SDKROOT := $(CLT_SDK)
   endif
