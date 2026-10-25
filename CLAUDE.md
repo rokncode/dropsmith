@@ -12,6 +12,7 @@ A native macOS app (Swift, SwiftUI + AppKit; the only third-party code is libweb
   - Squoosh-style compression: quality/lossless/effort, live before/after split view with the real encoded size, fit to a target size in KB
   - batch-apply edits to every dropped image
   - export next to the original, to a chosen folder, or to the clipboard
+  - drop targets near the Dock and under the menu bar that appear while dragging an image from anywhere (each optional)
 - **Planned quick actions:** strip metadata, rotate/flip, auto-crop to subject (Vision saliency), trim transparent edges, screenshot beautify (padding/rounded corners/shadow), copy text (OCR), dominant colors, app icon set, grayscale/adjustments
 - Exports never overwrite: `OutputNaming` produces `name-edited.ext`, `name-edited-2.ext`, ...
 
@@ -24,11 +25,16 @@ make build                     # debug build
 make run                       # run unbundled (agent policy is set in code, so no Dock icon)
 make test                      # all tests
 make test FILTER=ResizeTests   # one suite or test (passed to `swift test --filter`)
-make app                       # release build → build/DesktopEdit.app (ad-hoc signed, LSUIElement)
+make app                       # release build → build/Dropsmith.app (ad-hoc signed, LSUIElement)
+make dmg VERSION=1.2.3         # make app + build/Dropsmith-1.2.3.dmg (VERSION defaults to 0.1.0)
 make install                   # make app + copy to /Applications (so Spotlight can relaunch it)
 ```
 
+**Releases:** pushing a `v*` tag runs `.github/workflows/release.yml` on `macos-26` (Xcode 26, needed for Swift 6.2). It runs the tests, then `make dmg`, then publishes a GitHub release with the DMG. The app is ad-hoc signed and not notarized, so Gatekeeper blocks the first launch. The release notes explain how to open it anyway.
+
 `Launch at Login` (SMAppService) only appears and works in the bundled `.app`, not under `make run`.
+
+The app icon is `Resources/AppIcon.png`, a 1024px master with the standard macOS padding already in it (shape 824px, centered). `scripts/bundle.sh` turns it into `AppIcon.icns` with `sips` + `iconutil`. To replace it, keep that padding, or the icon will look oversized next to other apps.
 
 ## Toolchain quirks (Command Line Tools only, no Xcode)
 
@@ -39,15 +45,17 @@ make install                   # make app + copy to /Applications (so Spotlight 
 
 ## Architecture
 
-Two targets: **`ImageKit`** (pure image pipeline, no UI imports, all unit-tested) and **`DesktopEdit`** (the app).
+Two targets: **`ImageKit`** (pure image pipeline, no UI imports, all unit-tested) and **`Dropsmith`** (the app).
 
 **The "widget" is not WidgetKit.** WidgetKit widgets can't receive drops. `DropZoneController` owns a borderless, non-activating `NSPanel` at `desktopIconWindow + 1` (or `.floating` when "Keep Drop Zone Above Windows" is on), on all Spaces, with its frame autosaved. Menu toggles write `UserDefaults` via `@AppStorage`. The controller watches `UserDefaults.didChangeNotification` and applies them, so the menu and the panel stay decoupled.
+
+**Drag targets** (`DragTargetsController`): a global `.leftMouseDragged` monitor (no Accessibility permission needed) watches `NSPasteboard(name: .drag).changeCount`. When a new drag carries images, it shows `.popUpMenu`-level capsule panels next to the Dock (side found from `visibleFrame` vs `frame`) and under the menu bar icon (found via the `NSStatusBarWindow`, since `MenuBarExtra` hides its `NSStatusItem`). The drag loop runs in the source app, so release is detected by polling `NSEvent.pressedMouseButtons`, then the panels hide after 400 ms so a drop can land. Toggles: `dragTargetNearDock`, `dragTargetUnderMenuBar`. Both targets and the drop zone share the `onImageDrop` modifier.
 
 **Staying reachable:**
 - The menu bar icon can be hidden (`MenuBarExtra(isInserted:)`, key `menuBarIconVisible`).
 - `AppMenu` is shared by the icon and the drop zone's right-click menu, so settings and Quit always have a home.
 - If both are hidden, `applicationShouldHandleReopen` restores them when the app is launched again. Visibility changes go through `AppDelegate.setMenuBarIconVisible` / `setDropZoneVisible`, which show the how-to-get-back alert.
-- From a shell: `defaults write dev.desktopedit.DesktopEdit menuBarIconVisible -bool true`, then relaunch.
+- From a shell: `defaults write dev.dropsmith.Dropsmith menuBarIconVisible -bool true`, then relaunch.
 
 **Drop → editor flow:**
 

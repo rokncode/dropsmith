@@ -4,12 +4,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 @main
-struct DesktopEditApp: App {
+struct DropsmithApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage(AppDelegate.menuBarIconKey) private var showMenuBarIcon = true
 
     var body: some Scene {
-        MenuBarExtra("Desktop Edit", systemImage: "photo.on.rectangle.angled", isInserted: $showMenuBarIcon) {
+        MenuBarExtra("Dropsmith", systemImage: "photo.on.rectangle.angled", isInserted: $showMenuBarIcon) {
             AppMenu(appDelegate: appDelegate)
         }
     }
@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let hiddenIconTipKey = "suppressHiddenMenuBarIconTip"
 
     let dropZone = DropZoneController()
+    let dragTargets = DragTargetsController()
     let editors = EditorWindowManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -29,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dropZone.onDrop = { [weak self] sources in self?.editors.open(sources) }
         dropZone.menu = { [unowned self] in AnyView(AppMenu(appDelegate: self)) }
         dropZone.start()
+        dragTargets.onDrop = { [weak self] sources in self?.editors.open(sources) }
+        dragTargets.start()
     }
 
     /// Launching the app again while it runs (Finder, Spotlight, `open`) is the way back when
@@ -64,11 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         if isDropZoneVisible {
             alert.messageText = "Menu bar icon hidden"
-            alert.informativeText = "Right-click the drop zone for settings and Quit. You can also open Desktop Edit again from Finder or Spotlight to bring the icon back."
+            alert.informativeText = "Right-click the drop zone for settings and Quit. You can also open Dropsmith again from Finder or Spotlight to bring the icon back."
             alert.showsSuppressionButton = true
         } else {
-            alert.messageText = "Desktop Edit is still running"
-            alert.informativeText = "The menu bar icon and the drop zone are both hidden. Open Desktop Edit again from Finder or Spotlight to bring them back."
+            alert.messageText = "Dropsmith is still running"
+            alert.informativeText = "The menu bar icon and the drop zone are both hidden. Open Dropsmith again from Finder or Spotlight to bring them back."
         }
         NSApp.activate()
         alert.runModal()
@@ -95,6 +98,8 @@ struct AppMenu: View {
     @AppStorage(AppDelegate.menuBarIconKey) private var showMenuBarIcon = true
     @AppStorage(DropZoneController.visibleKey) private var showDropZone = true
     @AppStorage(DropZoneController.floatsKey) private var floatAboveWindows = false
+    @AppStorage(DragTargetsController.dockKey) private var dockTarget = true
+    @AppStorage(DragTargetsController.menuBarKey) private var menuBarTarget = true
 
     var body: some View {
         Button("Open Images…") { appDelegate.openImages() }
@@ -105,6 +110,10 @@ struct AppMenu: View {
             set: { appDelegate.setDropZoneVisible($0) }
         ))
         Toggle("Keep Drop Zone Above Windows", isOn: $floatAboveWindows)
+        Menu("Drop Targets While Dragging") {
+            Toggle("Near the Dock", isOn: $dockTarget)
+            Toggle("Under the Menu Bar", isOn: $menuBarTarget)
+        }
         Toggle("Show Menu Bar Icon", isOn: Binding(
             get: { showMenuBarIcon },
             set: { appDelegate.setMenuBarIconVisible($0) }
@@ -113,7 +122,7 @@ struct AppMenu: View {
             Toggle("Launch at Login", isOn: LoginItem.binding)
         }
         Divider()
-        Button("Quit Desktop Edit") { NSApp.terminate(nil) }
+        Button("Quit Dropsmith") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 }

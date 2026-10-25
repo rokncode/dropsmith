@@ -19,7 +19,7 @@ struct SourceImage: Identifiable, Hashable, Sendable {
 
     static func temporary(data: Data, type: UTType) throws -> SourceImage {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("DesktopEdit", isDirectory: true)
+            .appendingPathComponent("Dropsmith", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("Dropped Image")

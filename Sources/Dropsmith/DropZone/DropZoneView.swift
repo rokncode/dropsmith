@@ -34,16 +34,25 @@ struct DropZoneView: View {
         .padding(6)
         .scaleEffect(isTargeted ? 1.05 : 1)
         .animation(.spring(duration: 0.25), value: isTargeted)
-        .onDrop(of: [.fileURL, .image], isTargeted: $isTargeted) { providers in
-            isLoading = true
+        .onImageDrop(isTargeted: $isTargeted, isLoading: $isLoading, perform: onDrop)
+        .contextMenu { menu() }
+    }
+}
+
+extension View {
+    /// Accepts dropped image files or image data (shared by the drop zone and the drag targets).
+    func onImageDrop(
+        isTargeted: Binding<Bool>, isLoading: Binding<Bool>, perform: @escaping ([SourceImage]) -> Void
+    ) -> some View {
+        onDrop(of: [.fileURL, .image], isTargeted: isTargeted) { providers in
+            isLoading.wrappedValue = true
             Task {
                 let sources = await DropLoader.sources(from: providers)
-                isLoading = false
-                if !sources.isEmpty { onDrop(sources) }
+                isLoading.wrappedValue = false
+                if !sources.isEmpty { perform(sources) }
             }
             return true
         }
-        .contextMenu { menu() }
     }
 }
 

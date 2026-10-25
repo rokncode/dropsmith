@@ -7,13 +7,17 @@ ifeq ($(shell xcode-select -p),/Library/Developer/CommandLineTools)
   endif
 endif
 
-.PHONY: build run test app install clean
+# `make dmg VERSION=1.2.3` stamps the bundle and names the DMG.
+VERSION ?= 0.1.0
+export VERSION
+
+.PHONY: build run test app dmg install clean
 
 build:
 	swift build
 
 run:
-	swift run DesktopEdit
+	swift run Dropsmith
 
 # Pass FILTER=SuiteOrTestName to run a subset.
 test:
@@ -22,10 +26,14 @@ test:
 app:
 	scripts/bundle.sh
 
+# Drag-to-install disk image at build/Dropsmith-$(VERSION).dmg.
+dmg: app
+	scripts/dmg.sh
+
 # Copies the app to /Applications so Spotlight/Launchpad can find it (needed to reopen it
 # when the menu bar icon and drop zone are both hidden).
 install: app
-	ditto build/DesktopEdit.app /Applications/DesktopEdit.app
+	ditto build/Dropsmith.app /Applications/Dropsmith.app
 
 clean:
 	rm -rf .build build

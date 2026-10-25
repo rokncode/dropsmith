@@ -6,7 +6,7 @@ import PackageDescription
 let cltDeveloper = "/Library/Developer/CommandLineTools"
 
 let package = Package(
-    name: "DesktopEdit",
+    name: "Dropsmith",
     platforms: [.macOS(.v14)],
     dependencies: [
         // ImageIO can read WebP but not write it; libwebp is compiled from source into the app.
@@ -14,7 +14,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "ImageKit", dependencies: [.product(name: "libwebp", package: "libwebp-Xcode")]),
-        .executableTarget(name: "DesktopEdit", dependencies: ["ImageKit"]),
+        .executableTarget(name: "Dropsmith", dependencies: ["ImageKit"]),
         .testTarget(
             name: "ImageKitTests",
             dependencies: ["ImageKit"],
