@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 // Command Line Tools (no Xcode) ship Swift Testing but SwiftPM doesn't wire up its macro plugin
@@ -9,7 +9,7 @@ let usingCLT = Context.environment["DROPSMITH_CLT"] == "1"
 
 let package = Package(
     name: "Dropsmith",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v26)],
     dependencies: [
         // ImageIO can read WebP but not write it; libwebp is compiled from source into the app.
         .package(url: "https://github.com/SDWebImage/libwebp-Xcode.git", exact: "1.6.0"),

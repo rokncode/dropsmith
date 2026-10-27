@@ -14,7 +14,7 @@ struct CompareView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                Color(nsColor: .underPageBackgroundColor)
+                Color.clear
                 if actualSize {
                     ScrollView([.horizontal, .vertical]) {
                         comparison
@@ -31,8 +31,9 @@ struct CompareView: View {
             .overlay(alignment: .topLeading) { badge("Original") }
             .overlay(alignment: .topTrailing) { badge(session.encodeSummary) }
 
-            Divider()
             statsBar
+                .glassPanel(cornerRadius: 18)
+                .padding([.horizontal, .bottom], 10)
         }
     }
 
@@ -69,7 +70,7 @@ struct CompareView: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.black.opacity(0.7))
                     .frame(width: 30, height: 30)
-                    .background(Circle().fill(Color.white).shadow(color: .black.opacity(0.35), radius: 3))
+                    .glassEffect(.regular.tint(.white.opacity(0.6)), in: Circle())
                     .position(x: x, y: geometry.size.height / 2)
             }
             .gesture(DragGesture(minimumDistance: 0).onChanged { value in
@@ -103,34 +104,45 @@ struct CompareView: View {
                         Text(savings.text)
                             .font(.subheadline.weight(.semibold))
                             .monospacedDigit()
-                            .foregroundStyle(savings.isSmaller ? .green : .red)
+                            .foregroundStyle(savings.color)
                     }
                 }
             }
             Button("Done") { session.isComparing = false }
                 .keyboardShortcut(.cancelAction)
+                .buttonStyle(.glass)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.bar)
     }
 
     private func badge(_ text: String) -> some View {
         Text(text)
             .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(.regularMaterial, in: Capsule())
+            .glassChip()
             .padding(12)
     }
 
-    /// e.g. "−87%" when the encoded file is smaller than the original file.
-    static func savings(_ session: EditSession) -> (text: String, isSmaller: Bool)? {
-        guard let original = session.originalBytes, original > 0, let bytes = session.comparison?.bytes else { return nil }
+    static func savings(_ session: EditSession) -> Savings? {
+        guard let original = session.originalBytes, let bytes = session.comparison?.bytes else { return nil }
+        return Savings(from: original, to: bytes)
+    }
+}
+
+/// Size change of an encoded file, e.g. "−87%" when it's smaller than the original file.
+struct Savings {
+    let text: String
+    let isSmaller: Bool
+
+    init?(from original: Int, to bytes: Int) {
+        guard original > 0 else { return nil }
         let change = Double(bytes) / Double(original) - 1
         let percent = Int((abs(change) * 100).rounded())
-        return (change <= 0 ? "−\(percent)%" : "+\(percent)%", change <= 0)
+        text = change <= 0 ? "−\(percent)%" : "+\(percent)%"
+        isSmaller = change <= 0
     }
+
+    var color: Color { isSmaller ? .green : .red }
 }
 
 func formatBytes(_ bytes: Int) -> String {

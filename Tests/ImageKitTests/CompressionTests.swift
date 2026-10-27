@@ -31,9 +31,7 @@ private func noise(width: Int = 256, height: Int = 256) throws -> CGImage {
     }
 
     @Test func avifIsWritableOnRecentMacOS() throws {
-        if #available(macOS 15, *) {
-            #expect(ImageFormat.writable.contains(.avif))
-        }
+        #expect(ImageFormat.writable.contains(.avif))
     }
 
     @Test(arguments: [ImageFormat.jpeg, .webp])

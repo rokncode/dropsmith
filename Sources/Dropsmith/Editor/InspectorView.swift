@@ -41,6 +41,10 @@ struct InspectorView: View {
                 .disabled(session.isCropping)
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        // A legacy (always-visible) scroller cuts across the panel's rounded corner.
+        .scrollIndicators(.never)
+        .buttonStyle(.glass)
         .disabled(session.isWorking || session.current == nil)
     }
 }
@@ -61,7 +65,7 @@ private struct CropSection: View {
                     Spacer()
                     Button("Apply Crop") { Task { await session.applyCrop() } }
                         .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminent)
                 }
             } else {
                 Button("Crop…", systemImage: "crop") { session.beginCrop() }
@@ -205,7 +209,7 @@ private struct CompressionSection: View {
                     HStack(spacing: 4) {
                         Text(formatBytes(comparison.bytes)).monospacedDigit()
                         if let savings = CompareView.savings(session) {
-                            Text(savings.text).foregroundStyle(savings.isSmaller ? .green : .red)
+                            Text(savings.text).foregroundStyle(savings.color)
                         }
                     }
                 }
@@ -235,16 +239,13 @@ private struct ExportSection: View {
                 Text("Choose folder…").tag(ExportDestination.chooseFolder)
                 Text("Clipboard").tag(ExportDestination.clipboard)
             }
-            if session.sources.count > 1 && session.destination != .clipboard {
-                Toggle("Apply edits to all \(session.sources.count) images", isOn: $session.exportAll)
-            }
             Button {
                 Task { await session.export() }
             } label: {
                 Label(session.destination == .clipboard ? "Copy" : "Export \(session.exportFormat.displayName)", systemImage: "square.and.arrow.down")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .controlSize(.large)
             .keyboardShortcut("s")
 

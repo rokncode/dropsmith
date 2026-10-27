@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product
 
-A native macOS app (Swift, SwiftUI + AppKit; the only third-party code is libwebp) that puts a small **drop zone on the desktop**. Dropping images on it opens an editor window.
+A native macOS 26+ app (Swift, SwiftUI + AppKit, Liquid Glass UI; the only third-party code is libwebp) that puts a small **drop zone on the desktop**. Dropping images on it opens an editor window.
 
 - **Built:**
   - crop (free + aspect presets), remove background, resize (percent / pixels)
   - convert to PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF or BMP
   - Squoosh-style compression: quality/lossless/effort, live before/after split view with the real encoded size, fit to a target size in KB
-  - batch-apply edits to every dropped image
+  - batch window for several dropped images: remove background, resize, format/compression (incl. per-image target KB) for all at once, with each image's real output size; crop stays per image via "Open in Editor"
   - export next to the original, to a chosen folder, or to the clipboard
   - drop targets near the Dock and under the menu bar that appear while dragging an image from anywhere (each optional)
 - **Planned quick actions:** strip metadata, rotate/flip, auto-crop to subject (Vision saliency), trim transparent edges, screenshot beautify (padding/rounded corners/shadow), copy text (OCR), dominant colors, app icon set, grayscale/adjustments
@@ -60,7 +60,7 @@ Two targets: **`ImageKit`** (pure image pipeline, no UI imports, all unit-tested
 **Drop → editor flow:**
 
 1. `DropLoader` turns `NSItemProvider`s into `SourceImage`s. Raw image data (e.g. from a browser) is written to a temp file first, so everything downstream works from a file URL.
-2. `EditorWindowManager` opens one window per drop, each with its own `EditSession`.
+2. `EditorWindowManager` opens one window per drop: one image → `EditorView` + `EditSession`, several → `BatchView` + `BatchSession`. Both are `GlassWindow`s.
 
 **`ImageOperation`** (`apply(to: CIImage) async throws -> CIImage`, `Sendable` value types) is the extension point. To add a quick action, add a type in `Sources/ImageKit/Operations/` and a button in `InspectorView`. Conventions:
 
@@ -73,9 +73,13 @@ Two targets: **`ImageKit`** (pure image pipeline, no UI imports, all unit-tested
 - `operations`: the recipe
 - `history`: a rendered `CGImage` after each step, for the selected image only
 
-Applying an op renders from the last baked `CGImage`, so undo is a pop and Vision never reruns. Switching images in a batch replays the recipe (`renderSteps`). Batch export re-runs `Pipeline` per source but reuses the baked image for the selected one. Heavy work runs in `@concurrent nonisolated static` helpers.
+Applying an op renders from the last baked `CGImage`, so undo is a pop and Vision never reruns. Export writes the baked image. Heavy work runs in `@concurrent nonisolated static` helpers.
+
+**`BatchSession`** (`@MainActor @Observable`) holds one `BatchRecipe` (ImageKit: remove background + `.scale`/`.fit` resize, no crop) for every image. Each `BatchItem` has its `ImageInfo` (header-only: size with EXIF orientation, bytes, type) and an `Estimate` from a real encode. `BatchView` runs `.task(id: estimateKey)`; `refreshEstimates` debounces 300 ms, then encodes 3 images at a time through `BatchProcessor`. Renders with background removal are cached per recipe (pixel budget ~800 MB), so changing only encode settings never reruns Vision. A target KB applies per image (`Compressor.fit`, quality 0 + a warning badge when it can't fit).
 
 Compare mode (`CompareView`) shows the current image next to the same image decoded from the actual encoded bytes. `EditorView` runs `.task(id: session.compressionKey)`. The key covers the compare flag, format, options and a `revision` counter that bumps on every `history` change. That task cancels and restarts on each change, and the 250 ms sleep in `refreshComparison` doubles as a slider debounce. The "Original file" size reads the source file with symlinks resolved.
+
+**Design (Liquid Glass):** `Design/Glass.swift`. Windows come from `GlassWindow.make`: transparent full-size title bar over a behind-window blur (`WindowBackdrop`). Controls, bars, panels and cards float on it as glass (`.glassEffect`, `.glassPanel()`, `.glassChip()`, `.buttonStyle(.glass/.glassProminent)`, `GlassEffectContainer` for groups). The drop zone and drag targets are glass shapes tinted with the accent color while targeted.
 
 **Rendering/IO:**
 
@@ -87,7 +91,7 @@ Compare mode (`CompareView`) shows the current image next to the same image deco
   - metadata is **not** carried over
 - `WebPEncoder` uses libwebp's advanced API (`method` = effort). libwebp needs *straight* RGBA, so it draws premultiplied via CGContext and divides alpha out by hand. Core Image's `unpremultiplyingAlpha()` does **not** work for this: CI re-premultiplies bitmap output. A lossless round-trip test guards it.
 - `Compressor.fit` binary-searches quality for a max byte count and returns nil when even quality 0 is too big. Size ranges differ a lot per encoder (WebP's is narrow on noisy images).
-- `RemoveBackground` uses `VNGenerateForegroundInstanceMaskRequest` + `CIBlendWithMask`, which is why the minimum is macOS 14. Applying it auto-switches a non-alpha export format to PNG.
+- `RemoveBackground` uses `VNGenerateForegroundInstanceMaskRequest` + `CIBlendWithMask`. Applying it auto-switches a non-alpha export format to PNG.
 
 **Tests** generate images in code (`Tests/ImageKitTests/Helpers.swift`). The background-removal test uses `/Library/User Pictures/Animals/Parrot.heic` and is skipped if that file is missing.
 

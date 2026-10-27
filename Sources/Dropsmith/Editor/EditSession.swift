@@ -2,10 +2,6 @@ import AppKit
 import ImageKit
 import Observation
 
-enum ExportDestination: Hashable {
-    case besideOriginal, chooseFolder, clipboard
-}
-
 enum CropAspect: String, CaseIterable, Identifiable {
     case free = "Free", original = "Original", square = "1:1"
     case fourThree = "4:3", threeTwo = "3:2", sixteenNine = "16:9"
@@ -43,11 +39,10 @@ struct CompressionKey: Hashable {
 }
 
 /// State for one editor window. `operations` is the edit recipe; `history` holds the rendered
-/// result after each step for the selected image, so undo is instant and Vision never reruns.
+/// result after each step, so undo is instant and Vision never reruns.
 @MainActor @Observable
 final class EditSession {
-    let sources: [SourceImage]
-    private(set) var selectedIndex = 0
+    let source: SourceImage
     private(set) var operations: [any ImageOperation] = []
     private(set) var history: [CGImage] = [] { didSet { revision += 1 } }
     /// Bumped on every change to `history`, since its count alone repeats after undo + apply.
@@ -63,7 +58,6 @@ final class EditSession {
     var encodeOptions = EncodeOptions(quality: 0.8)
     var targetKilobytes: Int?
     var destination = ExportDestination.besideOriginal
-    var exportAll = true
     private(set) var exportMessage: String?
     private(set) var exportedURLs: [URL] = []
 
@@ -71,20 +65,19 @@ final class EditSession {
     private(set) var comparison: Comparison?
     private(set) var isEncoding = false
 
-    init(sources: [SourceImage]) {
-        self.sources = sources
-        let sourceFormat = sources.first.flatMap { ImageFormat(fileExtension: $0.url.pathExtension) }
+    init(source: SourceImage) {
+        self.source = source
+        let sourceFormat = ImageFormat(fileExtension: source.url.pathExtension)
         exportFormat = sourceFormat.flatMap { ImageFormat.writable.contains($0) ? $0 : nil } ?? .png
     }
 
     var current: CGImage? { history.last }
-    var selectedSource: SourceImage { sources[selectedIndex] }
     var currentSize: CGSize { current.map { CGSize(width: $0.width, height: $0.height) } ?? .zero }
     var hasTransparencyEdit: Bool { operations.contains { $0 is RemoveBackground } }
 
     var originalBytes: Int? {
         // Resolve symlinks, or this reports the link's own size.
-        (try? selectedSource.url.resolvingSymlinksInPath().resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        (try? source.url.resolvingSymlinksInPath().resourceValues(forKeys: [.fileSizeKey]))?.fileSize
     }
 
     var compressionKey: CompressionKey {
@@ -109,17 +102,10 @@ final class EditSession {
 
     // MARK: Editing
 
-    func loadSelected() async {
+    func load() async {
         await run {
-            self.history = try await Self.renderSteps(of: self.selectedSource.url, operations: self.operations)
+            self.history = [try await Self.load(self.source.url)]
         }
-    }
-
-    func select(_ index: Int) {
-        guard index != selectedIndex, sources.indices.contains(index) else { return }
-        selectedIndex = index
-        isCropping = false
-        Task { await loadSelected() }
     }
 
     func apply(_ operation: any ImageOperation) async {
@@ -212,30 +198,18 @@ final class EditSession {
             return
         }
 
-        var folder: URL?
+        var folder = source.defaultExportFolder
         if destination == .chooseFolder {
-            let panel = NSOpenPanel()
-            panel.canChooseDirectories = true
-            panel.canChooseFiles = false
-            panel.canCreateDirectories = true
-            panel.prompt = "Export Here"
-            guard panel.runModal() == .OK, let url = panel.url else { return }
-            folder = url
+            guard let chosen = ExportDestination.chooseFolder() else { return }
+            folder = chosen
         }
 
-        let indices = exportAll && sources.count > 1 ? Array(sources.indices) : [selectedIndex]
-        let format = exportFormat, options = encodeOptions, operations = operations
+        let url = OutputNaming.uniqueURL(for: source.url, format: exportFormat, in: folder)
+        let format = exportFormat, options = encodeOptions
         await run {
-            var written: [URL] = []
-            for index in indices {
-                let source = self.sources[index]
-                let url = OutputNaming.uniqueURL(for: source.url, format: format, in: folder ?? Self.defaultFolder(for: source))
-                let baked = index == self.selectedIndex ? current : nil
-                try await Self.export(source: source.url, baked: baked, operations: operations, format: format, options: options, to: url)
-                written.append(url)
-            }
-            self.exportedURLs = written
-            self.exportMessage = written.count == 1 ? "Saved \(written[0].lastPathComponent)" : "Saved \(written.count) images"
+            try await Self.export(current, format: format, options: options, to: url)
+            self.exportedURLs = [url]
+            self.exportMessage = "Saved \(url.lastPathComponent)"
         }
     }
 
@@ -255,22 +229,9 @@ final class EditSession {
         }
     }
 
-    /// Next to the original when that folder is writable, otherwise (and for dropped data) ~/Downloads.
-    private static func defaultFolder(for source: SourceImage) -> URL {
-        let folder = source.url.deletingLastPathComponent()
-        if !source.isTemporary, FileManager.default.isWritableFile(atPath: folder.path) {
-            return folder
-        }
-        return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-    }
-
     @concurrent
-    private nonisolated static func renderSteps(of url: URL, operations: [any ImageOperation]) async throws -> [CGImage] {
-        var steps = [try Renderer.cgImage(from: ImageLoader.load(contentsOf: url))]
-        for operation in operations {
-            steps.append(try await render(operation, on: steps[steps.count - 1]))
-        }
-        return steps
+    private nonisolated static func load(_ url: URL) async throws -> CGImage {
+        try Renderer.cgImage(from: ImageLoader.load(contentsOf: url))
     }
 
     @concurrent
@@ -279,16 +240,8 @@ final class EditSession {
     }
 
     @concurrent
-    private nonisolated static func export(
-        source: URL, baked: CGImage?, operations: [any ImageOperation],
-        format: ImageFormat, options: EncodeOptions, to url: URL
-    ) async throws {
-        let image = if let baked {
-            CIImage(cgImage: baked)
-        } else {
-            try await Pipeline.run(operations, on: ImageLoader.load(contentsOf: source))
-        }
-        try ImageExporter.write(image, format: format, options: options, to: url)
+    private nonisolated static func export(_ image: CGImage, format: ImageFormat, options: EncodeOptions, to url: URL) async throws {
+        try ImageExporter.write(CIImage(cgImage: image), format: format, options: options, to: url)
     }
 
     @concurrent

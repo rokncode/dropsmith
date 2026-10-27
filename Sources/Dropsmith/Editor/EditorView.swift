@@ -6,19 +6,16 @@ struct EditorView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                CanvasView(session: session)
-                if session.sources.count > 1 {
-                    Divider()
-                    ThumbnailStrip(session: session)
-                }
-            }
-            Divider()
+            CanvasView(session: session)
             InspectorView(session: session)
                 .frame(width: 300)
+                .glassPanel()
+                .padding([.vertical, .trailing], 10)
+                // The panel runs up beside the traffic lights; the canvas keeps clear of them.
+                .ignoresSafeArea(.container, edges: .top)
         }
         .frame(minWidth: 820, minHeight: 540)
-        .task { await session.loadSelected() }
+        .task { await session.load() }
         .task(id: session.compressionKey) { await session.refreshComparison() }
         .alert(
             "Something went wrong",
@@ -37,7 +34,7 @@ struct CanvasView: View {
 
     var body: some View {
         ZStack {
-            Color(nsColor: .underPageBackgroundColor)
+            Color.clear
             if session.isComparing, let image = session.current {
                 CompareView(session: session, original: image)
             } else if let image = session.current {
@@ -46,6 +43,7 @@ struct CanvasView: View {
                     .interpolation(.high)
                     .scaledToFit()
                     .background(Checkerboard())
+                    .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
                     .overlay {
                         if session.isCropping {
                             CropOverlay(rect: $session.cropRect, aspect: session.normalizedCropAspect)
@@ -59,41 +57,15 @@ struct CanvasView: View {
                 ProgressView()
                     .controlSize(.large)
                     .padding(24)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .glassPanel(cornerRadius: 18)
             }
         }
-    }
-}
-
-struct ThumbnailStrip: View {
-    let session: EditSession
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Array(session.sources.enumerated()), id: \.element.id) { index, source in
-                    Button { session.select(index) } label: {
-                        Thumbnail(url: source.url)
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(index == session.selectedIndex ? Color.accentColor : .clear, lineWidth: 2.5)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .help(source.name)
-                }
-            }
-            .padding(10)
-        }
-        .background(.bar)
-        .disabled(session.isWorking)
     }
 }
 
 struct Thumbnail: View {
     let url: URL
+    var maxPixelSize = 160
     @State private var image: CGImage?
 
     var body: some View {
@@ -104,7 +76,8 @@ struct Thumbnail: View {
             }
         }
         .task(id: url) {
-            image = await Task.detached { ImageLoader.thumbnail(contentsOf: url, maxPixelSize: 160) }.value
+            let size = maxPixelSize
+            image = await Task.detached { ImageLoader.thumbnail(contentsOf: url, maxPixelSize: size) }.value
         }
     }
 }

@@ -165,8 +165,6 @@ private struct DragTargetView: View {
 
     var body: some View {
         ZStack {
-            VisualEffectBackground()
-                .clipShape(shape)
             shape
                 .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
                 .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary.opacity(0.45))
@@ -184,6 +182,7 @@ private struct DragTargetView: View {
             }
             .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
         }
+        .glassEffect(isTargeted ? .regular.tint(.accentColor.opacity(0.35)) : .regular, in: shape)
         .scaleEffect(isTargeted ? 1.05 : 1)
         .animation(.spring(duration: 0.25), value: isTargeted)
         .onImageDrop(isTargeted: $isTargeted, isLoading: $isLoading, perform: onDrop)

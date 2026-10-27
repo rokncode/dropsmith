@@ -22,7 +22,7 @@ Planned: strip metadata, rotate/flip, auto-crop to subject, trim transparent edg
 
 Download the latest DMG from [Releases](https://github.com/rokncode/dropsmith/releases) and drag Dropsmith to Applications.
 
-Requires **macOS 14** or later. AVIF export needs a macOS version whose ImageIO can encode AVIF.
+Requires **macOS 26** or later (the UI uses Liquid Glass). AVIF export needs a macOS version whose ImageIO can encode AVIF.
 
 The app is ad-hoc signed and not notarized, so macOS blocks the first launch. To open it anyway, go to **System Settings → Privacy & Security** and click **Open Anyway**, or run:
 

@@ -12,8 +12,6 @@ struct DropZoneView: View {
 
     var body: some View {
         ZStack {
-            VisualEffectBackground()
-                .clipShape(shape)
             shape
                 .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
                 .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary.opacity(0.45))
@@ -31,11 +29,16 @@ struct DropZoneView: View {
             }
             .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary)
         }
+        .glassEffect(glass, in: shape)
         .padding(6)
         .scaleEffect(isTargeted ? 1.05 : 1)
         .animation(.spring(duration: 0.25), value: isTargeted)
         .onImageDrop(isTargeted: $isTargeted, isLoading: $isLoading, perform: onDrop)
         .contextMenu { menu() }
+    }
+
+    private var glass: Glass {
+        isTargeted ? .regular.tint(.accentColor.opacity(0.35)).interactive() : .regular.interactive()
     }
 }
 
@@ -54,17 +57,4 @@ extension View {
             return true
         }
     }
-}
-
-/// Behind-window blur so the zone reads as a translucent widget over the wallpaper.
-struct VisualEffectBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
